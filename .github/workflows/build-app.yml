@@ -5,6 +5,7 @@ on:
     branches: [ "master", "old-android" ]
   pull_request:
     branches: [ "master" ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,7 +22,7 @@ jobs:
           output-path: app-debug.apk
           fastlane-env: "debug"
           ruby-version: "3.3.0"
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         if: github.event_name == 'pull_request'
         name: Upload app APK
         with:
@@ -35,7 +36,7 @@ jobs:
           echo "BUILD_TOOL_VERSION=$BUILD_TOOL_VERSION" >> $GITHUB_ENV
           echo Last build tool version is: $BUILD_TOOL_VERSION
       - uses: r0adkll/sign-android-release@v1
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && vars.ENABLE_SIGNING == 'true'
         name: Sign app APK
         id: sign_app
         with:
@@ -46,7 +47,13 @@ jobs:
         env:
           BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOL_VERSION }}
       - uses: actions/upload-artifact@v4
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && vars.ENABLE_SIGNING != 'true'
+        name: Upload unsigned app APK
+        with:
+          name: App bundle (unsigned)
+          path: app-debug.apk
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request' && vars.ENABLE_SIGNING == 'true'
         name: Upload signed app APK
         with:
           name: Signed app bundle
