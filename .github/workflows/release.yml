@@ -1,0 +1,66 @@
+name: Release APP
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - '[0-9]*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Install NDK and CMake
+        run: yes | sdkmanager "ndk;25.1.8937393" "cmake;3.22.1"
+      - name: Build release APK (unsigned)
+        if: vars.ENABLE_SIGNING == 'true'
+        run: ./gradlew :app:assembleRelease
+      - name: Build debug APK
+        if: vars.ENABLE_SIGNING != 'true'
+        run: ./gradlew :app:assembleDebug
+      # https://github.com/r0adkll/sign-android-release/issues/84#issuecomment-1889636075
+      - name: Setup build tool version variable
+        if: vars.ENABLE_SIGNING == 'true'
+        shell: bash
+        run: |
+          BUILD_TOOL_VERSION=$(ls /usr/local/lib/android/sdk/build-tools/ | tail -n 1)
+          echo "BUILD_TOOL_VERSION=$BUILD_TOOL_VERSION" >> $GITHUB_ENV
+          echo Last build tool version is: $BUILD_TOOL_VERSION
+      - uses: r0adkll/sign-android-release@v1
+        if: vars.ENABLE_SIGNING == 'true'
+        name: Sign app APK
+        id: sign_app
+        with:
+          releaseDirectory: app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOL_VERSION }}
+      - name: Collect APK
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ "${{ vars.ENABLE_SIGNING }}" == "true" ]; then
+            cp "${{ steps.sign_app.outputs.signedReleaseFile }}" "dist/ZerotierFix-${{ github.ref_name }}.apk"
+          else
+            cp app/build/outputs/apk/debug/app-debug.apk "dist/ZerotierFix-${{ github.ref_name }}-debug.apk"
+          fi
+      - uses: softprops/action-gh-release@v2
+        name: Create GitHub Release
+        with:
+          files: dist/*.apk
+          generate_release_notes: true
